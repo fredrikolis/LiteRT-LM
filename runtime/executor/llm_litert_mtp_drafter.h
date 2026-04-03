@@ -88,9 +88,12 @@ class LlmLiteRtMtpDrafter {
                           verifier_input_buffers,
                       absl::flat_hash_map<absl::string_view, TensorBuffer>
                           verifier_output_buffers,
-                      int num_draft_steps)
+                      TensorBuffer drafter_id_tensor,
+                      TensorBuffer verifier_id_tensor,
+                      std::string drafter_signature_key, int num_draft_steps)
       : mtp_drafter_model_(std::move(mtp_drafter_model)),
         base_model_(std::move(base_model)),
+        drafter_signature_key_(std::move(drafter_signature_key)),
         verify_signature_(std::move(verify_signature)),
         embedding_manager_(embedding_manager),
         ple_manager_(ple_manager),
@@ -101,6 +104,8 @@ class LlmLiteRtMtpDrafter {
         drafter_output_buffers_(std::move(drafter_output_buffers)),
         verifier_input_buffers_(std::move(verifier_input_buffers)),
         verifier_output_buffers_(std::move(verifier_output_buffers)),
+        drafter_id_tensor_(std::move(drafter_id_tensor)),
+        verifier_id_tensor_(std::move(verifier_id_tensor)),
         num_draft_steps_(num_draft_steps) {}
 
   absl::StatusOr<absl::flat_hash_map<absl::string_view, TensorBuffer>>
@@ -140,6 +145,8 @@ class LlmLiteRtMtpDrafter {
 
   // The base model, used for verification.
   CompiledModel base_model_;
+  std::string drafter_signature_key_;
+  // The signature key for the base model verification.
   SimpleSignature verify_signature_;
 
   EmbeddingLookupManager& embedding_manager_;
@@ -153,7 +160,7 @@ class LlmLiteRtMtpDrafter {
   // The names of the key/value cache input tensors for the MTP drafter model.
   std::vector<std::string> kv_cache_input_names_;
 
-  // MTP drafter owned buffers. This includes:
+  // MTP drafter owned buffers. This includes tokens, positions, results.
   //   - input_position [batch, sequence_length]
   //   - mask [batch, 1, sequence_length = 1, context]
   //   - activations [batch, sequence_length = 1, hidden_size * 2]
@@ -162,7 +169,7 @@ class LlmLiteRtMtpDrafter {
   //   - projected_logits [batch, sequence_length, hidden_size]
   absl::flat_hash_map<absl::string_view, TensorBuffer> drafter_output_buffers_;
 
-  // Verifier owned buffers. This includes:
+  // Verifier owned buffers.
   //   - input_position [batch, draft_steps + 1]
   //   - mask [batch, 1, draft_steps + 1, context]
   //   - embeddings [batch, draft_steps + 1, hidden_size]
@@ -171,6 +178,10 @@ class LlmLiteRtMtpDrafter {
   //   - logits [batch, draft_steps + 1, vocab_size]
   //   - activations [batch, draft_steps + 1, hidden_size]
   absl::flat_hash_map<absl::string_view, TensorBuffer> verifier_output_buffers_;
+
+  // Pre-allocated temporary tensors for sampling.
+  TensorBuffer drafter_id_tensor_;
+  TensorBuffer verifier_id_tensor_;
 
   // The number of draft steps.
   const int num_draft_steps_;
