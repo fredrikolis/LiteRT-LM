@@ -82,6 +82,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@nlohmann_json//:json",
         "//runtime/components/constrained_decoding:constraint",
         "//runtime/proto:engine_cc_proto",
         "//runtime/util:litert_status_util",
