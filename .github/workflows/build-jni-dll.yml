@@ -8,6 +8,8 @@ on:
 jobs:
   build-windows-dll:
     runs-on: windows-latest
+    env:
+      ANDROID_NDK_HOME: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,14 +23,16 @@ jobs:
           repository-cache: true
 
       - name: Build JNI DLL
+        shell: pwsh
         run: |
-          bazel build --define=litert_link_capi_so=true --define=resolve_symbols_in_exec=false --build_tag_filters='-nowindows' //kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni
+          bazel build --build_tag_filters='-nowindows' //kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni
 
       - name: Copy DLL
+        shell: pwsh
         run: |
-          mkdir artifacts
-          cp bazel-bin/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm_jni.dll artifacts/
-          ls -la artifacts/
+          New-Item -ItemType Directory -Path artifacts -Force
+          Copy-Item bazel-bin/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm_jni.dll artifacts/
+          Get-ChildItem artifacts/
 
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v4
