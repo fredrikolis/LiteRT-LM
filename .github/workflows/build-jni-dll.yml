@@ -5,33 +5,69 @@ on:
   push:
     branches: [fix-windows-stat64]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-windows-dll:
+    name: "Build-Win-JNI"
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     env:
       ANDROID_NDK_HOME: ""
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code.
+        uses: actions/checkout@v4
         with:
           lfs: true
 
-      - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.14.0
+      - name: Set up cache keys and bazel output base.
+        id: cache-keys
+        run: |
+          $CACHE_RESTORE_KEY_2="${{ github.workflow }}"
+          $CACHE_RESTORE_KEY_1="$CACHE_RESTORE_KEY_2-${{ hashFiles('**/WORKSPACE', '**/.bazelrc') }}"
+          $CACHE_RESTORE_KEY_0="$CACHE_RESTORE_KEY_1-${{ hashFiles('**/BUILD*') }}"
+          $CACHE_KEY="$CACHE_RESTORE_KEY_0-${{ github.sha }}"
+          echo "CACHE_RESTORE_KEY_2=$CACHE_RESTORE_KEY_2" >> "$env:GITHUB_OUTPUT"
+          echo "CACHE_RESTORE_KEY_1=$CACHE_RESTORE_KEY_1" >> "$env:GITHUB_OUTPUT"
+          echo "CACHE_RESTORE_KEY_0=$CACHE_RESTORE_KEY_0" >> "$env:GITHUB_OUTPUT"
+          echo "CACHE_KEY=$CACHE_KEY" >> "$env:GITHUB_OUTPUT"
+          $SHORT_SHA=$("${{ github.sha }}".SubString(0, 8))
+          echo "BAZEL_OUTPUT_BASE=D:/w-$SHORT_SHA" >> "$env:GITHUB_ENV"
+
+      - name: Restore bazel cache.
+        id: bazel-cache
+        uses: actions/cache/restore@v4
         with:
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+          path: |
+            ~/.cache/bazel-windows
+          key: ${{ steps.cache-keys.outputs.CACHE_KEY }}
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.CACHE_RESTORE_KEY_0 }}-
+            ${{ steps.cache-keys.outputs.CACHE_RESTORE_KEY_1 }}-
+            ${{ steps.cache-keys.outputs.CACHE_RESTORE_KEY_2 }}-
 
       - name: Build JNI DLL
-        shell: pwsh
         run: |
-          bazel build --build_tag_filters='-nowindows' //kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni
+          bazel --output_base="$env:BAZEL_OUTPUT_BASE" `
+            build --disk_cache=~/.cache/bazel-windows `
+            --build_tag_filters='-nowindows' `
+            //kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni
 
       - name: Copy DLL
-        shell: pwsh
         run: |
           New-Item -ItemType Directory -Path artifacts -Force
-          Copy-Item bazel-bin/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm_jni.dll artifacts/
+          Copy-Item "$env:BAZEL_OUTPUT_BASE/../**/litertlm_jni.dll" artifacts/ -ErrorAction SilentlyContinue
+          # Fallback: find it
+          $dll = Get-ChildItem -Path "$env:BAZEL_OUTPUT_BASE" -Recurse -Filter "litertlm_jni.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($dll) { Copy-Item $dll.FullName artifacts/ -Force }
+          else {
+            $dll = Get-ChildItem -Path "bazel-bin" -Recurse -Filter "litertlm_jni.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($dll) { Copy-Item $dll.FullName artifacts/ -Force }
+          }
           Get-ChildItem artifacts/
 
       - name: Upload DLL artifact
@@ -39,3 +75,11 @@ jobs:
         with:
           name: litertlm_jni-windows-x86_64-patched
           path: artifacts/litertlm_jni.dll
+
+      - name: Save bazel cache.
+        uses: actions/cache/save@v4
+        if: steps.bazel-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cache/bazel-windows
+          key: ${{ steps.cache-keys.outputs.CACHE_KEY }}
