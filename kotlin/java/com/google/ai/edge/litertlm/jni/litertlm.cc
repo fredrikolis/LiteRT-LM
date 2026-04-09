@@ -13,7 +13,16 @@
 // limitations under the License.
 
 #include <jni.h>
+#ifdef _WIN32
+#include <sys/types.h>
 #include <sys/stat.h>
+#define litert_stat _stat64
+#define litert_stat_t struct __stat64
+#else
+#include <sys/stat.h>
+#define litert_stat stat
+#define litert_stat_t struct stat
+#endif
 
 #include <memory>
 #include <optional>
@@ -398,8 +407,8 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
   env->ReleaseStringUTFChars(model_path, model_path_chars);
 
   // Check if the file exists.
-  struct stat buffer;
-  if (stat(model_path_str.c_str(), &buffer) != 0) {
+  litert_stat_t buffer;
+  if (litert_stat(model_path_str.c_str(), &buffer) != 0) {
     ThrowLiteRtLmJniException(env, "Model file not found: " + model_path_str);
     return 0;
   }
@@ -566,8 +575,8 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateBenchmark)(
   env->ReleaseStringUTFChars(model_path, model_path_chars);
 
   // Check if the file exists.
-  struct stat buffer;
-  if (stat(model_path_str.c_str(), &buffer) != 0) {
+  litert_stat_t buffer;
+  if (litert_stat(model_path_str.c_str(), &buffer) != 0) {
     ThrowLiteRtLmJniException(env, "Model file not found: " + model_path_str);
     return 0;
   }
