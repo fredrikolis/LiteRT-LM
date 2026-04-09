@@ -1,0 +1,37 @@
+name: Build patched Windows JNI DLL
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix-windows-stat64]
+
+jobs:
+  build-windows-dll:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Build JNI DLL
+        run: |
+          bazel build --define=litert_link_capi_so=true --define=resolve_symbols_in_exec=false --build_tag_filters='-nowindows' //kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni
+
+      - name: Copy DLL
+        run: |
+          mkdir artifacts
+          cp bazel-bin/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm_jni.dll artifacts/
+          ls -la artifacts/
+
+      - name: Upload DLL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: litertlm_jni-windows-x86_64-patched
+          path: artifacts/litertlm_jni.dll
