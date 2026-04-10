@@ -50,11 +50,12 @@ jobs:
             ${{ steps.cache-keys.outputs.CACHE_RESTORE_KEY_1 }}-
             ${{ steps.cache-keys.outputs.CACHE_RESTORE_KEY_2 }}-
 
-      - name: Build JNI DLL
+      - name: Build JNI DLL (statically linked)
         run: |
           bazel --output_base="$env:BAZEL_OUTPUT_BASE" `
             build --disk_cache=~/.cache/bazel-windows `
             --build_tag_filters='-nowindows' `
+            --dynamic_mode=off `
             //kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni
 
       - name: Copy DLL
@@ -69,6 +70,25 @@ jobs:
             if ($dll) { Copy-Item $dll.FullName artifacts/ -Force }
           }
           Get-ChildItem artifacts/
+
+      - name: Verify DLL is self-contained
+        run: |
+          $dll = Get-Item artifacts/litertlm_jni.dll
+          $sizeMB = [math]::Round($dll.Length / 1MB, 1)
+          Write-Host "DLL size: $sizeMB MB"
+          if ($sizeMB -lt 25) {
+            Write-Host "WARNING: DLL is only $sizeMB MB — may have dynamic dependencies"
+            Write-Host "Upstream Maven DLL is ~39 MB (fully static). Expected similar size."
+          } else {
+            Write-Host "OK: DLL size looks correct for a statically-linked build"
+          }
+          # Verify the _stat64 patch is present
+          if (Select-String -Path $dll.FullName -Pattern '_stat64' -Encoding Byte -Quiet) {
+            Write-Host "OK: _stat64 patch confirmed in DLL"
+          } else {
+            Write-Host "FAIL: _stat64 not found in DLL"
+            exit 1
+          }
 
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v4
